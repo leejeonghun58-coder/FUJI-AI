@@ -31,6 +31,7 @@ export default function Home() {
   const [picked, setPicked] = useState<Menu | null>(null);
   const [showSaved, setShowSaved] = useState(false);
   const [supabaseReady, setSupabaseReady] = useState(false);
+  const [clientId, setClientId] = useState("");
   const [toast, setToast] = useState("");
 
   const filteredMenus = useMemo(
@@ -41,15 +42,14 @@ export default function Home() {
   useEffect(() => {
     let mounted = true;
     async function loadSavedMenus() {
-      let { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        const result = await supabase.auth.signInAnonymously();
-        session = result.data.session;
-        if (result.error) setToast("찜 기능을 연결하지 못했어요. 잠시 후 다시 시도해주세요.");
-      }
-      if (!session || !mounted) return;
-      const { data, error } = await supabase.from("saved_menus").select("menu_name").eq("user_id", session.user.id);
+      const storageKey = "oneul-menu-client-id";
+      const id = window.localStorage.getItem(storageKey) ?? crypto.randomUUID();
+      window.localStorage.setItem(storageKey, id);
+      if (!mounted) return;
+      setClientId(id);
+      const { data, error } = await supabase.from("guest_saved_menus").select("menu_name").eq("client_id", id);
       if (!error && data) setSaved(data.map((item) => item.menu_name));
+      if (error) setToast("찜 목록을 불러오지 못했어요. 잠시 후 다시 시도해주세요.");
       if (mounted) setSupabaseReady(true);
     }
     void loadSavedMenus();
@@ -69,13 +69,12 @@ export default function Home() {
       setToast("찜 기능을 준비하고 있어요. 잠시만 기다려주세요.");
       return;
     }
-    const { data: { user } } = await supabase.auth.getUser();
     const menu = menus.find((item) => item.name === name);
-    if (!user || !menu) return;
+    if (!clientId || !menu) return;
     const alreadySaved = saved.includes(name);
     const result = alreadySaved
-      ? await supabase.from("saved_menus").delete().eq("user_id", user.id).eq("menu_name", name)
-      : await supabase.from("saved_menus").insert({ user_id: user.id, menu_name: menu.name, category: menu.category, description: menu.description, price: menu.price, emoji: menu.emoji, tone: menu.tone, tags: menu.tags, time: menu.time });
+      ? await supabase.from("guest_saved_menus").delete().eq("client_id", clientId).eq("menu_name", name)
+      : await supabase.from("guest_saved_menus").insert({ client_id: clientId, menu_name: menu.name, category: menu.category, description: menu.description, price: menu.price, emoji: menu.emoji, tone: menu.tone, tags: menu.tags, time: menu.time });
     if (result.error) {
       setToast("저장에 실패했어요. 잠시 후 다시 시도해주세요.");
       return;
