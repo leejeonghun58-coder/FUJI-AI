@@ -97,7 +97,7 @@ export default function Home() {
           <p className="hero-sub">고민은 짧게, 맛있는 점심은 확실하게.<br />지금 딱 끌리는 메뉴를 찾아보세요.</p>
           <button className="primary-button" onClick={pickForMe}>오늘은 내가 정해줄게 <span>✦</span></button>
         </div>
-        <div className="hero-art" aria-hidden="true"><div className="art-sun">☀</div><div className="art-bowl">🍚</div><div className="art-leaf leaf-one">✦</div><div className="art-leaf leaf-two">✳</div><div className="art-note">오늘도<br />잘 먹자!</div></div>
+        <div className="hero-art"><img src="/hero-lunch.png" alt="따뜻하고 윤기 나는 밥 한 그릇 일러스트" /></div>
       </section>
 
       <section className="menu-section" id="menus">
