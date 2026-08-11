@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 type Menu = {
   name: string;
@@ -28,12 +29,32 @@ export default function Home() {
   const [activeCategory, setActiveCategory] = useState("전체");
   const [saved, setSaved] = useState<string[]>([]);
   const [picked, setPicked] = useState<Menu | null>(null);
+  const [showSaved, setShowSaved] = useState(false);
+  const [supabaseReady, setSupabaseReady] = useState(false);
   const [toast, setToast] = useState("");
 
   const filteredMenus = useMemo(
     () => activeCategory === "전체" ? menus : menus.filter((menu) => menu.category === activeCategory),
     [activeCategory],
   );
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadSavedMenus() {
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        const result = await supabase.auth.signInAnonymously();
+        session = result.data.session;
+        if (result.error) setToast("찜 기능을 연결하지 못했어요. 잠시 후 다시 시도해주세요.");
+      }
+      if (!session || !mounted) return;
+      const { data, error } = await supabase.from("saved_menus").select("menu_name").eq("user_id", session.user.id);
+      if (!error && data) setSaved(data.map((item) => item.menu_name));
+      if (mounted) setSupabaseReady(true);
+    }
+    void loadSavedMenus();
+    return () => { mounted = false; };
+  }, []);
 
   function pickForMe() {
     const pool = filteredMenus.length ? filteredMenus : menus;
@@ -43,8 +64,23 @@ export default function Home() {
     window.setTimeout(() => setToast(""), 3200);
   }
 
-  function toggleSaved(name: string) {
-    setSaved((current) => current.includes(name) ? current.filter((item) => item !== name) : [...current, name]);
+  async function toggleSaved(name: string) {
+    if (!supabaseReady) {
+      setToast("찜 기능을 준비하고 있어요. 잠시만 기다려주세요.");
+      return;
+    }
+    const { data: { user } } = await supabase.auth.getUser();
+    const menu = menus.find((item) => item.name === name);
+    if (!user || !menu) return;
+    const alreadySaved = saved.includes(name);
+    const result = alreadySaved
+      ? await supabase.from("saved_menus").delete().eq("user_id", user.id).eq("menu_name", name)
+      : await supabase.from("saved_menus").insert({ user_id: user.id, menu_name: menu.name, category: menu.category, description: menu.description, price: menu.price, emoji: menu.emoji, tone: menu.tone, tags: menu.tags, time: menu.time });
+    if (result.error) {
+      setToast("저장에 실패했어요. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+    setSaved((current) => alreadySaved ? current.filter((item) => item !== name) : [...current, name]);
   }
 
   return (
@@ -74,9 +110,10 @@ export default function Home() {
         </article>)}</div>
       </section>
 
-      <section className="decision-box" id="saved"><div><p className="eyebrow">STILL CAN&apos;T DECIDE?</p><h2>그래도 못 고르겠다면,<br /><span>저장한 메뉴</span>에서 골라보세요.</h2></div><button className="secondary-button" onClick={() => saved.length ? setToast(`찜한 메뉴 ${saved.length}개 중에서 골라보세요.`) : setToast("아직 찜한 메뉴가 없어요. 하트부터 눌러보세요!")}>찜한 메뉴 보기 <span>→</span></button></section>
+      <section className="decision-box" id="saved"><div><p className="eyebrow">STILL CAN&apos;T DECIDE?</p><h2>그래도 못 고르겠다면,<br /><span>저장한 메뉴</span>에서 골라보세요.</h2></div><button className="secondary-button" onClick={() => setShowSaved(true)}>찜한 메뉴 보기 <span>→</span></button></section>
       <footer><span>오늘이 메뉴</span><span>점심 고민을 덜어드려요 · Made for busy weekdays</span></footer>
       {picked && <div className="result-modal" role="dialog" aria-modal="true"><div className="result-card"><button className="close" onClick={() => setPicked(null)} aria-label="닫기">×</button><span className="result-emoji">{picked.emoji}</span><p className="eyebrow">TODAY&apos;S PICK</p><h2>{picked.name}</h2><p>{picked.description}</p><button className="primary-button" onClick={() => setPicked(null)}>좋아, 이걸로 먹을게!</button></div></div>}
+      {showSaved && <div className="result-modal" role="dialog" aria-modal="true" aria-labelledby="saved-title"><div className="saved-modal"><button className="close" onClick={() => setShowSaved(false)} aria-label="닫기">×</button><p className="eyebrow">YOUR SAVED MENUS</p><h2 id="saved-title">찜한 메뉴</h2>{saved.length === 0 ? <div className="empty-saved"><span>♡</span><p>아직 찜한 메뉴가 없어요.<br />마음에 드는 메뉴에 하트를 눌러보세요.</p></div> : <div className="saved-list">{menus.filter((menu) => saved.includes(menu.name)).map((menu) => <button className="saved-row" key={menu.name} onClick={() => { setPicked(menu); setShowSaved(false); }}><span className={`saved-row-icon ${menu.tone}`}>{menu.emoji}</span><span><strong>{menu.name}</strong><small>{menu.description}</small></span><span className="saved-arrow">→</span></button>)}</div>}</div></div>}
       {toast && <div className="toast" role="status">{toast}</div>}
     </main>
   );
